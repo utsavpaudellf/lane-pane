@@ -1,6 +1,6 @@
 import type { Elements, RenderElement } from 'claude-code'
 
-import type { LaneGate, LaneReview, LaneStatus, LaneView } from '../types'
+import type { LaneAnchor, LaneChoice, LaneGate, LaneReview, LaneStatus, LaneView } from '../types'
 
 // What the person's presses do; register.tsx owns the effects.
 export type PaneActions = {
@@ -8,24 +8,86 @@ export type PaneActions = {
   open: (gate: LaneGate) => void
   back: () => void
   note: (text: string) => void
-  approve: () => void
-  review: (verdict: 'changes' | 'reject') => void
+  context: (anchor: LaneAnchor | null) => void
+  choose: (choice: LaneChoice) => void
+  submit: () => void
 }
 
 // Markdown takes at most 10,000 characters, so a long document is drawn in line-aligned chunks.
-function chunks(body: string, max = 9000): string[] {
+// A chunk ends at a blank line when it can, so a table or a code fence stays in one piece.
+function chunks(body: string, max = 9000, hard = 9900): string[] {
   const out: string[] = []
   let cur = ''
   for (const line of body.split('\n')) {
-    if (cur && cur.length + line.length + 1 > max) {
+    const size = cur.length + line.length + 1
+    if (cur && (size > hard || (size > max && !line.trim()))) {
       out.push(cur)
       cur = ''
     }
-    cur = cur ? `${cur}\n${line}` : line.slice(0, max)
+    cur = cur ? `${cur}\n${line}` : line.slice(0, hard)
   }
   if (cur) out.push(cur)
   return out
 }
+
+const cellsOf = (line: string) =>
+  line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map(c => c.trim())
+const DELIM = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
+const shown = (c: string) => c.replace(/\*\*|`/g, '').length
+
+// The terminal sizes a markdown table to the whole terminal, not to the pane, so a table wider
+// than the pane wraps into broken rows. Such a table becomes a list: one item per row.
+export function fitTables(md: string, columns: number): string {
+  const lines = md.split('\n')
+  const out: string[] = []
+  let fence = false
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    if (fence || !line.includes('|') || !DELIM.test(lines[i + 1] ?? '')) {
+      out.push(line)
+      continue
+    }
+    let end = i + 2
+    while (end < lines.length && lines[end]?.includes('|') && lines[end]?.trim()) end++
+    const head = cellsOf(line)
+    const rows = lines.slice(i + 2, end).map(cellsOf)
+    const widths = head.map((h, c) => Math.max(shown(h), ...rows.map(r => shown(r[c] ?? ''))))
+    if (widths.reduce((a, w) => a + w + 3, 1) <= columns) {
+      out.push(...lines.slice(i, end))
+    } else {
+      for (const r of rows) {
+        const [first = '', ...rest] = r
+        const pairs = rest.map((cell, c) => [head[c + 1] ?? '', cell] as const).filter(([, cell]) => cell)
+        const title = `- **${first.replace(/\*\*/g, '')}**`
+        if (pairs.length === 1 && rest.length === 1) out.push(`${title}: ${pairs[0]?.[1]}`)
+        else out.push(title, ...pairs.map(([h, cell]) => `  - ${h ? `${h}: ` : ''}${cell}`))
+      }
+    }
+    i = end - 1
+  }
+  return out.join('\n')
+}
+
+// Each markdown heading and the lines under it, up to the next heading of the same or a higher
+// level, as an anchor in FILE lines (body line + the frontmatter offset), the way lane cites them.
+export function sections(body: string, offset: number): (LaneAnchor & { level: number })[] {
+  const lines = body.split('\n')
+  const heads: { at: number; level: number; title: string }[] = []
+  let fence = false
+  lines.forEach((line, at) => {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    const m = fence ? null : line.match(/^(#{1,6})\s+(.+?)[\s#]*$/)
+    if (m) heads.push({ at, level: m[1]?.length ?? 1, title: m[2] ?? '' })
+  })
+  return heads.map(({ at, level, title }, k) => {
+    let end = (heads.slice(k + 1).find(h => h.level <= level)?.at ?? lines.length) - 1
+    while (end > at && !lines[end]?.trim()) end--
+    return { lineStart: at + 1 + offset, lineEnd: end + 1 + offset, quote: title, level }
+  })
+}
+
+const rangeLabel = (a: LaneAnchor) => (a.lineStart === a.lineEnd ? `L${a.lineStart}` : `L${a.lineStart}-L${a.lineEnd}`)
 
 // The pane's drawing. Desktop gets SVG icons; the terminal gets one colored glyph per icon.
 type Els = Elements[keyof Elements]
@@ -70,9 +132,10 @@ function ago(ts: number): string {
   return `${Math.floor(s / 86400)}d`
 }
 
-export function drawPane(els: Els, surface: string, st: LaneStatus, v: LaneView | null, rv: LaneReview | null, act: PaneActions): RenderElement {
+export function drawPane(els: Els, surface: string, columns: number, st: LaneStatus, v: LaneView | null, rv: LaneReview | null, act: PaneActions): RenderElement {
   const { Box, Text, Button, Link, Markdown } = els
   const Input = 'Input' in els ? els.Input : undefined
+  const Select = 'Select' in els ? els.Select : undefined
   // Not `'Svg' in els`: the terminal's table has Svg too, completed to an empty fragment.
   const Svg = surface !== 'terminal' && 'Svg' in els ? els.Svg : undefined
 
@@ -113,29 +176,54 @@ export function drawPane(els: Els, surface: string, st: LaneStatus, v: LaneView 
   }
 
   if (rv) {
-    const verdictHelp = 'Request changes and Reject do not stamp anything. The agent gets your note and revises.'
+    const choices: [LaneChoice, string][] = [['approve', 'Approve'], ['changes', 'Request changes'], ['reject', 'Reject']]
+    const confirm: Record<LaneChoice, string> = { approve: 'Confirm: approve and stamp', changes: 'Confirm: request changes', reject: 'Confirm: reject' }
+    const help: Record<LaneChoice | 'none', string> = {
+      none: 'Pick a decision, then press Confirm. Nothing is sent before Confirm. Keys: a, c or r picks a decision; Tab moves between buttons; Enter presses one. Up and Down scroll.',
+      approve: `Confirm stamps ${rv.path} as approved and commits this exact text (the sha256 above) under your git name.`,
+      changes: 'Confirm sends your note and the section you added as context to the agent, which revises the document. Nothing is stamped. The note is required.',
+      reject: 'Confirm rejects the document and sends your note and context, if any, to the agent. Nothing is stamped.',
+    }
+    if (rv.choice === 'approve' && (rv.note.trim() || rv.context)) help.approve += ' Your note and context are not sent with an approval.'
+    const parts = rv.lineOffset === null ? [] : sections(rv.body, rv.lineOffset)
+    const picked = rv.context && parts.findIndex(p => p.lineStart === rv.context?.lineStart && p.lineEnd === rv.context?.lineEnd)
     return (
       <Box flexDirection="column" gap={1}>
         {row(<Button key="back" label="Back" onPress={act.back} />, icon('gate', 16), <Text bold wrap="wrap">{rv.label}</Text>)}
         <Text dimColor wrap="truncate-middle">{rv.path} | sha256 {rv.sha256.slice(0, 12)}</Text>
-        {rv.result && row(icon(rv.result.ok ? 'done' : 'warn', 14), <Text color={rv.result.ok ? 'green' : 'red'} wrap="wrap">{rv.result.message}</Text>)}
         <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
-          {chunks(rv.body).map(text => <Markdown text={text} />)}
+          {chunks(surface === 'terminal' ? fitTables(rv.body, columns - 4 /* frame and padding */) : rv.body).map(text => <Markdown text={text} />)}
         </Box>
         {!rv.approvable && row(icon('warn', 14), <Text color="yellow" wrap="wrap">Not approvable from the pane right now. Open the full dashboard to see why.</Text>)}
+        {Select && parts.length > 0 && (
+          <Select
+            key="context"
+            label="Add as context"
+            options={[{ value: 'none', label: 'Whole document' }, ...parts.map((p, i) => ({ value: String(i), label: `${rangeLabel(p)} ${'  '.repeat(p.level - 1)}${p.quote}` }))]}
+            value={picked !== null && picked >= 0 ? String(picked) : 'none'}
+            onSelect={value => {
+              const p = parts[Number(value)] // 'none' is NaN: no part
+              act.context(p ? { lineStart: p.lineStart, lineEnd: p.lineEnd, quote: p.quote } : null)
+            }}
+          />
+        )}
         {Input && (
           <Input key="note" label="Note for the agent" placeholder="What should change? (needed for Request changes)" value={rv.note} submitLabel="keep" onInput={act.note} onSubmit={act.note} />
         )}
+        <Text bold>Your decision</Text>
         <Box flexDirection="row" columnGap={2} flexWrap="wrap">
-          {rv.approvable && (
-            <Button key="approve" variant="primary" label={rv.busy ? 'Sending...' : rv.armed ? 'Confirm: approve and stamp' : 'Approve'} onPress={act.approve} />
+          {choices.filter(([c]) => c !== 'approve' || rv.approvable).map(([c, label]) =>
+            rv.choice === c
+              ? <Button key={c} hotkey={c[0]} variant="primary" label={`● ${label}`} onPress={() => act.choose(c)} />
+              : <Button key={c} hotkey={c[0]} label={label} onPress={() => act.choose(c)} />,
           )}
-          <Button key="changes" label="Request changes" onPress={() => act.review('changes')} />
-          <Button key="reject" label="Reject" onPress={() => act.review('reject')} />
         </Box>
-        {rv.armed
-          ? <Text color="yellow" wrap="wrap">Press Confirm to stamp {rv.path} as approved and commit it under your git name.</Text>
-          : <Text dimColor wrap="wrap">Approve stamps and commits this exact text (the sha256 above). {verdictHelp}</Text>}
+        {/* Confirm last: the ring lands on it after a pick, so the lines above it are in view. */}
+        <Text dimColor wrap="wrap">{help[rv.choice ?? 'none']}</Text>
+        {rv.result && row(icon(rv.result.ok ? 'done' : 'warn', 14), <Text color={rv.result.ok ? 'green' : 'red'} wrap="wrap">{rv.result.message}</Text>)}
+        {rv.choice
+          ? <Button key="submit" variant="primary" label={rv.busy ? 'Sending...' : confirm[rv.choice]} onPress={act.submit} />
+          : <Button key="submit" dimColor label="Confirm" onPress={act.submit} />}
       </Box>
     )
   }

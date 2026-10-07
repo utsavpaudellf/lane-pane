@@ -34,12 +34,12 @@ To get a new version later, run `claude plugin marketplace update lane-mods`, th
 
 ## Option B: install from the zip file
 
-Use this when you want a local copy instead of the GitHub marketplace. Download [lane-pane-0.3.3.zip](https://github.com/utsavpaudellf/lane-pane/releases/download/v0.3.3/lane-pane-0.3.3.zip) from the [v0.3.3 release](https://github.com/utsavpaudellf/lane-pane/releases/tag/v0.3.3).
+Use this when you want a local copy instead of the GitHub marketplace. Download [lane-pane-0.3.4.zip](https://github.com/utsavpaudellf/lane-pane/releases/download/v0.3.4/lane-pane-0.3.4.zip) from the [v0.3.4 release](https://github.com/utsavpaudellf/lane-pane/releases/tag/v0.3.4).
 
 1. Unzip the file to a folder you will keep. The plugin stays where you unzip it, so do not unzip it to Downloads or a temp folder.
 
    ```bash
-   mkdir -p ~/mods && unzip lane-pane-0.3.3.zip -d ~/mods
+   mkdir -p ~/mods && unzip lane-pane-0.3.4.zip -d ~/mods
    ```
 
 2. Register the folder as a marketplace:
@@ -65,7 +65,7 @@ Use this when you want a local copy instead of the GitHub marketplace. Download 
 Run Claude Code with the zip file. Nothing is installed.
 
 ```bash
-claude --plugin-dir ./lane-pane-0.3.3.zip
+claude --plugin-dir ./lane-pane-0.3.4.zip
 ```
 
 ## Use it
@@ -73,7 +73,7 @@ claude --plugin-dir ./lane-pane-0.3.3.zip
 1. In a Claude Code session, type `/lane-pane` and press Enter. The pane opens for the lane repo that holds the session's folder. If the session's folder is one level above a lane repo, it opens that repo. If it finds several, it lists them, and you pick one with `/lane-pane <path>`.
 2. To show another lane repo, type `/lane-pane /path/to/repo`.
 3. To close the pane, type `/lane-pane` again, or close the pane.
-4. To decide a gate, press **Review** under "Waiting on you". Read the document, then press **Approve** twice, or type a note and press **Request changes**, or press **Reject**.
+4. To decide a gate, press **Review** under "Waiting on you". Read the document. To point your note at one part of it, pick a section in **Add as context**. Type a note. Pick **Approve**, **Request changes** or **Reject** (keys `a`, `c`, `r`). Then press **Confirm**. Nothing is sent before Confirm.
 
 When it works, the pane shows the repo name, a "live" dot, and the next lane step.
 
@@ -100,4 +100,4 @@ In the terminal, the pane sits above the prompt. To put it beside the conversati
 - It starts `lane dashboard --no-open` in the repo and reads its local API (`http://127.0.0.1:<port>/api/state`) every 2 seconds.
 - It does not send data anywhere else.
 - It stops the dashboard when you close the pane.
-- It sends a gate decision only when you press a button: **Approve** (two presses), **Request changes** (needs a note), or **Reject**. lane checks the dashboard's session token and the sha256 of the text you read, then writes the stamp and the commit itself. Request changes and Reject never stamp anything.
+- It sends a gate decision only when you pick one and press **Confirm**: **Approve**, **Request changes** (needs a note), or **Reject**. A note can carry one section of the document as context (its line range and heading). lane checks the dashboard's session token and the sha256 of the text you read, then writes the stamp and the commit itself. Request changes and Reject never stamp anything.

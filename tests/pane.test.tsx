@@ -1,6 +1,8 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { fitTables, sections } from '../hooks/draw'
+
 const SNAPSHOT = {
   repo: 'repo',
   branch: 'master',
@@ -216,7 +218,8 @@ function mockDashboard(on: On, posts: { url: string; body: Record<string, unknow
     const reply = (body: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } })
     if (e.url.endsWith('/api/state')) return reply(SNAPSHOT)
     if (e.url.includes('/api/doc?path=')) {
-      return reply({ body: '# Patch 0009\n\nUndo the last cart line removal.', sha256: 'abc123def456789', gateId: 'spec:0009', approvable: true })
+      const body = '# Patch 0009\n\nUndo the last cart line removal.\n\n## Scope\n\nOnly the cart page.\n'
+      return reply({ body, lineOffset: 3, sha256: 'abc123def456789', gateId: 'spec:0009', approvable: true })
     }
     posts.push({ url: e.url, body: JSON.parse(e.init?.body ?? '{}') as Record<string, unknown> })
     return reply({ ok: true, message: 'Patch Spec approved — stamp written by lane (utsav).' })
@@ -237,11 +240,15 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     expect(await ui.find({ type: 'Markdown', text: /Undo the last cart line removal/ })).toBeDefined()
 
+    await ui.press({ key: 'submit' }) // nothing picked yet: Confirm only says so
+    expect(posts).toEqual([])
+    expect(await ui.find({ text: /Pick Approve, Request changes or Reject first/ })).toBeDefined()
     await ui.press({ key: 'approve' })
-    expect(posts).toEqual([]) // first press only arms
-    expect(await ui.find({ key: 'approve', text: /Confirm/ })).toBeDefined()
+    expect(posts).toEqual([]) // the first press only picks
+    expect(await ui.find({ key: 'approve', text: '● Approve' })).toBeDefined()
+    expect(await ui.find({ key: 'submit', text: 'Confirm: approve and stamp' })).toBeDefined()
 
-    await ui.press({ key: 'approve' })
+    await ui.press({ key: 'submit' })
     await clock.settle()
     expect(posts).toEqual([{ url: 'http://127.0.0.1:5555/api/approve', body: { token: 'tok-1', gateId: 'spec:0009', sha256: 'abc123def456789' } }])
     expect(await ui.find({ key: 'approve' })).toBeUndefined() // back on the dashboard
@@ -249,7 +256,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await ui.unmount()
   })
 
-  test(`request changes needs a note; reject does not (${surface})`, async ($, on) => {
+  test(`the pick can switch; request changes needs a note; reject does not (${surface})`, async ($, on) => {
     const clock = mock.clock(on)
     const posts: { url: string; body: Record<string, unknown> }[] = []
     mockDashboard(on, posts)
@@ -260,23 +267,89 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'lane-pane', surface, ...PANE })
     await ui.press({ key: 'review-spec:0009' })
     await clock.settle()
+    // Switch the pick: Approve, then Request changes. Only the picked one is marked.
+    await ui.press({ key: 'approve' })
     await ui.press({ key: 'changes' })
+    expect(await ui.find({ key: 'changes', text: '● Request changes' })).toBeDefined()
+    expect(await ui.find({ key: 'approve', text: 'Approve' })).toBeDefined()
+    expect(await ui.find({ key: 'submit', text: 'Confirm: request changes' })).toBeDefined()
+    await ui.press({ key: 'submit' })
     expect(posts).toEqual([])
     expect(await ui.find({ text: /Add a note first/ })).toBeDefined()
 
     await ui.input({ key: 'note', text: 'Keep the undo for 10 seconds', kind: 'change' })
-    await ui.press({ key: 'changes' })
+    await ui.press({ key: 'submit' })
     await clock.settle()
     expect(posts[0]).toEqual({
       url: 'http://127.0.0.1:5555/api/review',
-      body: { token: 'tok-1', gateId: 'spec:0009', sha256: 'abc123def456789', verdict: 'changes', note: 'Keep the undo for 10 seconds' },
+      body: { token: 'tok-1', gateId: 'spec:0009', sha256: 'abc123def456789', verdict: 'changes', note: 'Keep the undo for 10 seconds', anchor: null },
     })
 
     await ui.press({ key: 'review-spec:0009' })
     await clock.settle()
     await ui.press({ key: 'reject' })
+    expect(posts.length).toBe(1) // picking Reject sends nothing
+    await ui.press({ key: 'submit' })
     await clock.settle()
-    expect(posts[1]?.body).toEqual({ token: 'tok-1', gateId: 'spec:0009', sha256: 'abc123def456789', verdict: 'reject', note: '' })
+    expect(posts[1]?.body).toEqual({ token: 'tok-1', gateId: 'spec:0009', sha256: 'abc123def456789', verdict: 'reject', note: '', anchor: null })
+    await ui.unmount()
+  })
+}
+
+test('a table wider than the pane becomes a list in the terminal; a narrow one stays a table', async () => {
+  const doc = [
+    '| Aspect | Spec |',
+    '|--------|------|',
+    `| Interfaces | The checkout confirmation result gains one field: a card label of the form \`<Brand> ending in <last4>\`. ${'x'.repeat(40)} |`,
+    '| Tests | Unit tests only. |',
+    '',
+    '```',
+    '| a | b |',
+    '|---|---|',
+    '```',
+  ].join('\n')
+  const wide = fitTables(doc, 76)
+  expect(wide).toContain('- **Interfaces**: The checkout confirmation result gains one field')
+  expect(wide).toContain('- **Tests**: Unit tests only.')
+  expect(wide).not.toContain('|--------|')
+  expect(wide).toContain('```\n| a | b |\n|---|---|\n```') // tables inside a fence are code
+  expect(fitTables(doc, 400)).toBe(doc)
+
+  const three = fitTables('| ID | Kind | Note |\n|---|---|---|\n| AC-1 | behavior | ' + 'y'.repeat(90) + ' |', 76)
+  expect(three).toBe(`- **AC-1**\n  - Kind: behavior\n  - Note: ${'y'.repeat(90)}`)
+})
+
+test('sections are headings with their FILE lines; a fenced # is not a heading', async () => {
+  const body = '# Spec\n\nIntro.\n\n## Data\n\n```\n# not a heading\n```\n\n## Tests\nUnit only.\n'
+  expect(sections(body, 3)).toEqual([
+    { lineStart: 4, lineEnd: 15, quote: 'Spec', level: 1 },
+    { lineStart: 8, lineEnd: 12, quote: 'Data', level: 2 },
+    { lineStart: 14, lineEnd: 15, quote: 'Tests', level: 2 },
+  ])
+})
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`a section added as context goes with the note as lane's anchor (${surface})`, async ($, on) => {
+    const clock = mock.clock(on)
+    const posts: { url: string; body: Record<string, unknown> }[] = []
+    mockDashboard(on, posts)
+    mockPanes(on)
+    await $.command.run({ ...RUN, args: '/repos/try-it' })
+    await clock.settle()
+
+    const ui = await $.ui.mount({ plugin: 'lane-pane', surface, ...PANE })
+    await ui.press({ key: 'review-spec:0009' })
+    await clock.settle()
+    await ui.select({ key: 'context', value: '1' })
+
+    await ui.press({ key: 'changes' })
+    await ui.input({ key: 'note', text: 'Name the other pages', kind: 'change' })
+    await ui.press({ key: 'submit' })
+    await clock.settle()
+    expect(posts[0]?.body).toEqual({
+      token: 'tok-1', gateId: 'spec:0009', sha256: 'abc123def456789', verdict: 'changes', note: 'Name the other pages',
+      anchor: { lineStart: 8, lineEnd: 10, quote: 'Scope' },
+    })
     await ui.unmount()
   })
 }

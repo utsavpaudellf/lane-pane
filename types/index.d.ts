@@ -10,6 +10,11 @@ export type LaneNext = {
 
 export type LaneGate = { id: string; label: string; path: string; stale: boolean; notes: number; blocked: string | null }
 
+// A passage the note points at, as lane's /api/review takes it: 1-based FILE lines and the text there.
+export type LaneAnchor = { lineStart: number; lineEnd: number; quote: string }
+
+export type LaneChoice = 'approve' | 'changes' | 'reject'
+
 // The gate document the person opened in the pane, and what they are doing with it.
 export type LaneReview = {
   gateId: string
@@ -18,8 +23,10 @@ export type LaneReview = {
   sha256: string // hash of the body shown; approve sends it, so an edited doc is refused
   body: string
   approvable: boolean
+  lineOffset: number | null // frontmatter lines above the body; null from a lane too old to anchor notes
+  context: LaneAnchor | null // the section the note is about; null = the whole document
   note: string
-  armed: boolean // approve needs two presses
+  choice: LaneChoice | null // picked with one press, sent with Confirm: every decision takes two presses
   busy: boolean
   result: { ok: boolean; message: string } | null
 }

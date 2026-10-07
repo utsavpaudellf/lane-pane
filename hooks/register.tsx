@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Register, Timer } from 'claude-code'
 
-import type { LaneGate, LaneReview, LaneStatus, LaneView } from '../types'
+import type { LaneAnchor, LaneChoice, LaneGate, LaneReview, LaneStatus, LaneView } from '../types'
 import { drawPane, type PaneActions } from './draw'
 
 // The pane starts `lane dashboard --no-open`, draws its /api/state, and sends a person's
@@ -184,7 +184,7 @@ function actionsFor($: EngineInterface): PaneActions {
         try {
           const res = await $.http.fetch(`${base}/api/doc?path=${encodeURIComponent(gate.path)}`)
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          const doc = JSON.parse(res.text) as { body: string; sha256: string; gateId: string | null; approvable: boolean }
+          const doc = JSON.parse(res.text) as { body: string; sha256: string; gateId: string | null; approvable: boolean; lineOffset?: number }
           await update($, review, () => ({
             gateId: doc.gateId ?? gate.id,
             label: gate.label,
@@ -192,8 +192,10 @@ function actionsFor($: EngineInterface): PaneActions {
             sha256: doc.sha256,
             body: doc.body,
             approvable: doc.approvable,
+            lineOffset: typeof doc.lineOffset === 'number' ? doc.lineOffset : null,
+            context: null,
             note: '',
-            armed: false,
+            choice: null,
             busy: false,
             result: null,
           }))
@@ -203,25 +205,28 @@ function actionsFor($: EngineInterface): PaneActions {
       })(),
     back: () => void update($, review, () => null),
     note: (text: string) => void setReview($, r => ({ ...r, note: text })),
-    approve: () =>
+    context: (anchor: LaneAnchor | null) => void setReview($, r => ({ ...r, context: anchor })),
+    // The ring moves to Confirm: the focused button is then the one that sends, and the pane
+    // scrolls it into view. Denied when the pane does not hold the keyboard; nothing to do then.
+    choose: (choice: LaneChoice) =>
       void (async () => {
-        const r = await read($, review)
-        if (!r || r.busy || !r.approvable) return
-        if (!r.armed) return void (await setReview($, x => ({ ...x, armed: true, result: null })))
-        await setReview($, x => ({ ...x, busy: true }))
-        const out = await post($, '/api/approve', { gateId: r.gateId, sha256: r.sha256 })
-        if (out.ok) return closeReview($, out.message)
-        await setReview($, x => ({ ...x, busy: false, armed: false, result: out }))
+        await setReview($, x => (x.busy ? x : { ...x, choice, result: null }))
+        await Promise.resolve($.ui.focus({ requestId: PANE, key: 'submit' })).catch(() => {})
       })(),
-    review: (verdict: 'changes' | 'reject') =>
+    submit: () =>
       void (async () => {
         const r = await read($, review)
         if (!r || r.busy) return
-        if (verdict === 'changes' && !r.note.trim()) {
-          return void (await setReview($, x => ({ ...x, armed: false, result: { ok: false, message: 'Add a note first: the agent needs to know what to change.' } })))
+        if (!r.choice) return void (await setReview($, x => ({ ...x, result: { ok: false, message: 'Pick Approve, Request changes or Reject first.' } })))
+        if (r.choice === 'changes' && !r.note.trim()) {
+          return void (await setReview($, x => ({ ...x, result: { ok: false, message: 'Add a note first: the agent needs to know what to change.' } })))
         }
-        await setReview($, x => ({ ...x, busy: true, armed: false }))
-        const out = await post($, '/api/review', { gateId: r.gateId, sha256: r.sha256, verdict, note: r.note })
+        if (r.choice === 'approve' && !r.approvable) return
+        await setReview($, x => ({ ...x, busy: true, result: null }))
+        const out =
+          r.choice === 'approve'
+            ? await post($, '/api/approve', { gateId: r.gateId, sha256: r.sha256 })
+            : await post($, '/api/review', { gateId: r.gateId, sha256: r.sha256, verdict: r.choice, note: r.note, anchor: r.context })
         if (out.ok) return closeReview($, out.message)
         await setReview($, x => ({ ...x, busy: false, result: out }))
       })(),
@@ -269,6 +274,6 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) =>
-    drawPane($.ui.resolve(e), e.surface, await read($, status), await read($, view), await read($, review), actionsFor($)),
+    drawPane($.ui.resolve(e), e.surface, e.props.bodyColumns, await read($, status), await read($, view), await read($, review), actionsFor($)),
   )
 }
