@@ -12,17 +12,9 @@ You need all three:
 
 ## Option A: install from GitHub (recommended)
 
-This works in the terminal and in the Desktop app. The repository is private: ask Utsav to add you as a collaborator first.
+This works in the terminal and in the Desktop app. The repository is public, so you do not need a GitHub login.
 
-1. Check that git can reach the repository with your GitHub login:
-
-   ```bash
-   git ls-remote https://github.com/utsavpaudellf/lane-pane HEAD
-   ```
-
-   You see one line with a commit hash. If you see "Repository not found", you do not have access yet.
-
-2. Register the repository as a marketplace:
+1. Register the repository as a marketplace:
 
    ```bash
    claude plugin marketplace add utsavpaudellf/lane-pane
@@ -30,19 +22,19 @@ This works in the terminal and in the Desktop app. The repository is private: as
 
    You see: `Successfully added marketplace: lane-mods`.
 
-3. Install the plugin:
+2. Install the plugin:
 
    ```bash
    claude plugin install lane-pane@lane-mods
    ```
 
-4. Start a new Claude Code session. In an open session, run `/reload-plugins` instead.
+3. Start a new Claude Code session. In an open session, run `/reload-plugins` instead.
 
 To get a new version later, run `claude plugin marketplace update lane-mods`, then `claude plugin update lane-pane@lane-mods`, then start a new session.
 
 ## Option B: install from the zip file
 
-Use this when you have the zip file and no access to the repository.
+Use this when you have the zip file and cannot reach GitHub.
 
 1. Unzip the file to a folder you will keep. The plugin stays where you unzip it, so do not unzip it to Downloads or a temp folder.
 
