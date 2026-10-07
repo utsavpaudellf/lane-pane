@@ -34,7 +34,7 @@ To get a new version later, run `claude plugin marketplace update lane-mods`, th
 
 ## Option B: install from the zip file
 
-Use this when you have the zip file and cannot reach GitHub.
+Use this when you want a local copy instead of the GitHub marketplace. Download [lane-pane-0.3.3.zip](https://github.com/utsavpaudellf/lane-pane/releases/download/v0.3.3/lane-pane-0.3.3.zip) from the [v0.3.3 release](https://github.com/utsavpaudellf/lane-pane/releases/tag/v0.3.3).
 
 1. Unzip the file to a folder you will keep. The plugin stays where you unzip it, so do not unzip it to Downloads or a temp folder.
 
