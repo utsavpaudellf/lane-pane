@@ -132,7 +132,7 @@ async function start($: EngineInterface, cwd: string, bins = BINARIES): Promise<
       if (child !== spawned) return
       if (!out && rest.length > 0) return start($, cwd, rest) // not installed: try the other edition
       await stop($)
-      await setStatus($, { phase: 'error', message: `could not start ${BINARIES.join(' or ')} dashboard: ${String(err)}` })
+      await setStatus($, { phase: 'error', message: `could not start lane dashboard: ${String(err)}` })
     }
   })()
 }

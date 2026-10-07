@@ -7,7 +7,7 @@ Each gate waiting on you has a **Review** button. It shows the gate's document w
 ## Requirements
 
 - Claude Code v2.1.287 or later (Desktop app: v2.1.286 or later)
-- The `lane` or `lane-lite` CLI on your `PATH` (it tries `lane` first)
+- The `lane` CLI on your `PATH`
 - A repo set up with `lane init`
 
 ## Install
@@ -19,7 +19,7 @@ See [INSTALL.md](INSTALL.md).
 - `/lane-pane` opens the pane for the lane repo that holds the session's folder, or for the one lane repo directly below it. Run it again to close the pane.
 - `/lane-pane <path>` opens the pane for another lane repo, or switches the pane to it.
 
-The pane starts `lane dashboard --no-open` (or `lane-lite dashboard --no-open`) in the background and reads its `/api/state` every 2 seconds. Closing the pane stops that process.
+The pane starts `lane dashboard --no-open` in the background and reads its `/api/state` every 2 seconds. Closing the pane stops that process.
 
 In the terminal, the pane sits above the prompt. To dock it beside the transcript, run `/tui fullscreen` (needs 110 or more columns).
 

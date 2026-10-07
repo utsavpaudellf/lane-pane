@@ -7,7 +7,7 @@ lane-pane shows the LANE dashboard as a pane in Claude Code: the next step, the 
 You need all three:
 
 1. Claude Code v2.1.287 or later. Check with `claude --version`. The Claude Desktop app needs v2.1.286 or later: type `/status` in a Code session and read the "Claude Code" row.
-2. The `lane` or `lane-lite` CLI on your `PATH`. Check with `lane --version` or `lane-lite --version`. The pane uses `lane` when it starts, else `lane-lite`.
+2. The `lane` CLI on your `PATH`. Check with `lane --version`.
 3. A repo set up with `lane init`.
 
 ## Option A: install from GitHub (recommended)
@@ -90,7 +90,7 @@ In the terminal, the pane sits above the prompt. To put it beside the conversati
 ## Troubleshooting
 
 - **"Unknown command: /lane-pane"**: the session started before the install. Start a new session, or run `/reload-plugins`.
-- **The pane shows "could not start lane or lane-lite dashboard"**: neither CLI is on your `PATH`. Install one of them, then open the pane again.
+- **The pane shows "could not start lane dashboard"**: the `lane` CLI is not on your `PATH`. Install it, then open the pane again.
 - **The pane shows "not a LANE repo"**: the folder is not a lane repo. Run `/lane-pane /path/to/your/lane/repo`, or run `lane init` in that repo.
 
 ## Update or remove
@@ -105,7 +105,7 @@ In the terminal, the pane sits above the prompt. To put it beside the conversati
 
 ## What it does on your machine
 
-- It starts `lane dashboard --no-open` (or `lane-lite dashboard --no-open`) in the repo and reads its local API (`http://127.0.0.1:<port>/api/state`) every 2 seconds.
+- It starts `lane dashboard --no-open` in the repo and reads its local API (`http://127.0.0.1:<port>/api/state`) every 2 seconds.
 - It does not send data anywhere else.
 - It stops the dashboard when you close the pane.
 - It sends a gate decision only when you press a button: **Approve** (two presses), **Request changes** (needs a note), or **Reject**. lane checks the dashboard's session token and the sha256 of the text you read, then writes the stamp and the commit itself. Request changes and Reject never stamp anything.

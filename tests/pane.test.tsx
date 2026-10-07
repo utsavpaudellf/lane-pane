@@ -151,7 +151,7 @@ test('the pane falls back to lane-lite when lane does not start, and says when n
   await $.command.run({ ...RUN, args: '/repos/try-it' })
   await clock.settle()
   ui = await $.ui.mount({ plugin: 'lane-pane', surface: 'terminal', ...PANE })
-  expect(await ui.find({ text: /could not start lane or lane-lite dashboard/ })).toBeDefined()
+  expect(await ui.find({ text: /could not start lane dashboard/ })).toBeDefined()
   expect(tried).toEqual(['lane', 'lane-lite', 'lane', 'lane-lite'])
   await ui.unmount()
 })
