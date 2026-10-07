@@ -1,0 +1,12 @@
+{
+  "name": "lane-mods",
+  "description": "Claude Code mods for LANE (Leapfrog AI Native Execution)",
+  "owner": { "name": "Utsav Paudel" },
+  "plugins": [
+    {
+      "name": "lane-pane",
+      "source": "./",
+      "description": "Live LANE dashboard as a Claude Code pane"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "lane-pane",
+  "displayName": "LANE pane",
+  "version": "0.3.2",
+  "description": "Live LANE dashboard as a Claude Code pane: next step, human gates, progress, features, activity",
+  "author": {
+    "name": "Utsav Paudel"
+  },
+  "keywords": [
+    "lane",
+    "dashboard",
+    "pane",
+    "mod"
+  ],
+  "types": "./types/index.d.ts",
+  "repository": "https://github.com/utsavpaudellf/lane-pane"
+}
