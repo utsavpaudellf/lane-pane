@@ -39,7 +39,7 @@ Use this when you have the zip file and cannot reach GitHub.
 1. Unzip the file to a folder you will keep. The plugin stays where you unzip it, so do not unzip it to Downloads or a temp folder.
 
    ```bash
-   mkdir -p ~/mods && unzip lane-pane-0.3.2.zip -d ~/mods
+   mkdir -p ~/mods && unzip lane-pane-0.3.3.zip -d ~/mods
    ```
 
 2. Register the folder as a marketplace:
@@ -65,7 +65,7 @@ Use this when you have the zip file and cannot reach GitHub.
 Run Claude Code with the zip file. Nothing is installed.
 
 ```bash
-claude --plugin-dir ./lane-pane-0.3.2.zip
+claude --plugin-dir ./lane-pane-0.3.3.zip
 ```
 
 ## Use it
