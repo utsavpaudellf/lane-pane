@@ -87,7 +87,15 @@ In the terminal, the pane sits above the prompt. To put it beside the conversati
 
 ## Update or remove
 
-- To update: unzip the new version over the old folder, then start a new session.
+- To update an install from GitHub (Option A): run the commands below, then start a new session.
+- To update an install from the zip file (Option B): unzip the new version over the old folder (`unzip -o lane-pane-<version>.zip -d ~/mods`), run the commands below, then start a new session. Unzipping alone is not enough: Claude Code runs its own copy of each installed version, from `~/.claude/plugins/cache/`.
+
+  ```bash
+  claude plugin marketplace update lane-mods
+  claude plugin update lane-pane@lane-mods
+  ```
+
+  To check, run `claude plugin list`. It shows the new version under `lane-pane@lane-mods`.
 - To remove:
 
   ```bash
